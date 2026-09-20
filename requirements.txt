@@ -1,0 +1,5 @@
+Pillow>=10.0
+mss>=9.0
+pygetwindow>=0.0.9
+reportlab>=4.0
+comtypes>=1.4.16

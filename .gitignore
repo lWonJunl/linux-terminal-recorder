@@ -1,0 +1,33 @@
+# Python environment and generated caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.coverage
+.coverage.*
+htmlcov/
+
+# Private instructions and local credentials
+/LOCAL_USAGE.md
+.env
+.env.*
+
+# Practice records and exports (may contain personal information)
+recordings/
+test-recordings/
+linux-recordings/
+captures/
+session.json
+manifest.json
+history.txt
+history-before-change-*.txt
+.active-session.json
+.stop-request
+.control.lock
+.recorder.lock
+*.png
+*.pdf
+*.log
+
+# Temporary review tools and previews
+tmp/
