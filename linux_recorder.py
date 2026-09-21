@@ -264,15 +264,11 @@ def guarded_wsl_command(distro: str | None = None) -> list[str]:
     return command + ["--cd", "~", "--exec", "bash", "--rcfile", path, "-i"]
 
 
-def launch_terminal(title: str, distro: str | None = None, profile: str | None = None):
+def launch_terminal(title: str, distro: str | None = None):
     import pygetwindow as windows
 
     command = ["wt.exe", "--window", "new", "new-tab", "--title", title,
-               "--suppressApplicationTitle"]
-    if profile is not None:
-        command += ["--profile", profile]
-    # Override only the profile's shell command, keeping the session-only guard.
-    command += guarded_wsl_command(distro)
+               "--suppressApplicationTitle"] + guarded_wsl_command(distro)
     # This is the visible, interactive terminal requested by the user.
     process = subprocess.Popen(command)
     deadline = time.monotonic() + 20
@@ -289,29 +285,6 @@ def launch_terminal(title: str, distro: str | None = None, profile: str | None =
             raise RecorderError(f"Windows Terminal 실행 실패 (종료 코드 {code}).")
         time.sleep(0.1)
     raise RecorderError("20초 안에 기록할 WSL 창을 찾지 못했습니다.")
-
-
-def terminal_frame(window) -> Image.Image | None:
-    import pygetwindow as windows
-
-    if not window.title:
-        raise RecorderError("기록 대상 WSL 창이 닫혔습니다. stop으로 저장된 화면을 변환하세요.")
-    active = windows.getActiveWindow()
-    if window.isMinimized or active is None or active._hWnd != window._hWnd:
-        return None  # Pause while the target terminal is not foreground.
-    from ctypes import wintypes
-    rectangle, origin = wintypes.RECT(), wintypes.POINT()
-    handle = wintypes.HWND(window._hWnd)
-    user32 = ctypes.windll.user32
-    if not user32.GetClientRect(handle, ctypes.byref(rectangle)) or not user32.ClientToScreen(
-        handle, ctypes.byref(origin)
-    ):
-        raise RecorderError("터미널 창 내부 영역을 읽지 못했습니다.")
-    left, top = origin.x, origin.y
-    right, bottom = left + rectangle.right, top + rectangle.bottom
-    if right <= left or bottom <= top:
-        raise RecorderError("터미널 창 크기를 읽지 못했습니다.")
-    return grab_screen((left, top, right, bottom))
 
 
 def capture(state: dict, image: Image.Image) -> bool:
@@ -369,14 +342,10 @@ def record_loop(state: dict, frame_source) -> None:
         write_json(directory / "session.json", state)
 
 
-def start(name: str, interval: float, distro: str | None = None, profile: str | None = None) -> None:
+def start(name: str, interval: float, distro: str | None = None) -> None:
     if not math.isfinite(interval) or interval < 0.1:
         raise RecorderError("캡처 간격은 0.1초 이상의 유한한 숫자여야 합니다.")
     safe_name(name)
-    # Semicolons are Windows Terminal action separators, not profile names here.
-    if profile is not None and (not isinstance(profile, str) or not profile.strip()
-                                or re.search(r"[\x00-\x1f;]", profile)):
-        raise RecorderError("프로필 이름은 비어 있을 수 없으며 제어 문자나 세미콜론을 포함할 수 없습니다.")
     if os.name != "nt":
         raise RecorderError("Windows Python에서 실행하세요. WSL 내부 Python은 지원하지 않습니다.")
     for executable in ("wt.exe", "wsl.exe"):
@@ -401,21 +370,18 @@ def start(name: str, interval: float, distro: str | None = None, profile: str | 
                          started_at=now(), interval=interval, status="starting", capture_count=0,
                          pid=os.getpid(), terminal_title="Linux Recorder " + uuid.uuid4().hex[:12],
                          output_directory=str(OUTPUT_ROOT), clear_guard="bash-rc-v1")
-            if profile is not None:
-                state["terminal_profile"] = profile
             write_json(directory / "session.json", state)
             write_json(STATE_FILE, {"directory": str(directory)})
         except BaseException:
             recorder_lock.__exit__()
             raise
     try:
-        window = launch_terminal(state["terminal_title"], distro, profile)
+        window = launch_terminal(state["terminal_title"], distro)
         state["terminal_hwnd"] = window._hWnd
         write_json(directory / "session.json", state)
         from terminal_history import TerminalHistory, monitor
         history = TerminalHistory(window._hWnd, state["terminal_title"])
         print(f"파노라마 기록 시작\n중간 기록: {directory}\nPDF/PNG 저장 위치: {state['output_directory']}\n"
-              f"터미널 프로필: {profile if profile is not None else '기본 프로필'}\n"
               f"clear/reset/Ctrl+L 보호가 적용된 Bash입니다.\n평소처럼 실습한 뒤 다른 PowerShell에서 "
               f"python \"{SCRIPT}\" stop\n캡처가 끝날 때까지 WSL 창을 닫지 마세요.", flush=True)
         monitor(state, history, lambda value: write_json(directory / "session.json", value),
@@ -614,7 +580,6 @@ def main() -> int:
     start_parser.add_argument("name")
     start_parser.add_argument("--interval", type=float, default=1.0, help="텍스트 복구 백업 간격 (초)")
     start_parser.add_argument("--distro", help="예: Ubuntu-26.04 (생략하면 기본 WSL 배포판)")
-    start_parser.add_argument("--profile", help="Windows Terminal 프로필 이름 (생략하면 기본 프로필)")
     sub.add_parser("stop")
     sub.add_parser("status")
     sub.add_parser("doctor")
@@ -622,7 +587,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.command == "start":
-            start(args.name, args.interval, args.distro, args.profile)
+            start(args.name, args.interval, args.distro)
         elif args.command == "stop":
             stop()
         elif args.command == "status":

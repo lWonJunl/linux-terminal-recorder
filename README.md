@@ -23,14 +23,11 @@ wsl --list --quiet
 ### 2. 기록 시작
 
 ~~~powershell
-python -X utf8 linux_recorder.py start "Week01-Day02" --distro Ubuntu-26.04 --profile "Ubuntu-26.04"
+python -X utf8 linux_recorder.py start "Week01-Day02" --distro Ubuntu-26.04
 ~~~
 
 과제명은 원하는 이름으로 바꾸고, `Ubuntu-26.04`는 위에서 확인한 설치 배포판 이름으로 바꾼다.
-`--profile`에는 Windows Terminal의 탭 메뉴에 표시되는 프로필 이름을 넣는다.
-이 예시는 Ubuntu 프로필의 색상·글꼴·아이콘을 사용하면서 기록 보호가 적용된 Bash를 연다.
-`--distro`는 실행할 WSL 배포판, `--profile`은 창의 설정을 선택하며 이름이 서로 다를 수도 있다.
-각 옵션을 생략하면 각각 기본 WSL 배포판과 기본 Windows Terminal 프로필을 사용한다.
+배포판 옵션을 생략하면 기본 WSL 배포판을 사용한다.
 새로 열린 WSL 창에서 실습하면 명령 결과가 실시간으로 표시된다.
 처음 실행한 PowerShell과 WSL 창은 모두 열어 둔다.
 
@@ -159,7 +156,6 @@ python -X utf8 tests/verify_export.py "세션 폴더 경로"
 
 GUI 테스트는 600줄 출력·한글·색상·긴 줄·화면 지우기 방지·최종 파일 분리를 확인한다.
 기본 WSL 배포판을 사용하며, 다른 배포판은 `manual_smoke.py --distro "배포판 이름"`으로 선택한다.
-Ubuntu 프로필까지 지정한 예시는 `python -X utf8 tests/manual_smoke.py --distro Ubuntu-26.04 --profile "Ubuntu-26.04"`다.
 테스트 PDF·PNG와 중간 기록은 바탕화면에 남는다.
 선택 기능인 `verify_export.py --render`는 `pypdfium2` 설치가 필요하며 미리보기는 `tmp/pdfs`에 만든다.
 

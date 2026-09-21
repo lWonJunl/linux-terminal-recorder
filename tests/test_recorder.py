@@ -232,57 +232,27 @@ class RecorderTests(unittest.TestCase):
             with self.assertRaisesRegex(recorder.RecorderError, "기록 보호 경로"):
                 recorder.guarded_wsl_command()
 
-    def test_terminal_profile_selection_keeps_guarded_wsl_command(self):
+    def test_terminal_launch_uses_guarded_wsl_command(self):
         title = "Linux Recorder test"
         window = SimpleNamespace(title=title)
         windows = SimpleNamespace(getWindowsWithTitle=lambda _: [window])
         guarded = ["wsl.exe", "--distribution", "Ubuntu-26.04", "--exec",
                    "bash", "--rcfile", "/mnt/c/Project with spaces/recording.bashrc", "-i"]
-        for profile in (None, "Ubuntu-26.04", "My Ubuntu Profile"):
-            with self.subTest(profile=profile), \
-                 patch.dict(sys.modules, {"pygetwindow": windows}), \
-                 patch.object(recorder, "guarded_wsl_command", return_value=guarded) as guard, \
-                 patch.object(recorder.subprocess, "Popen") as popen, \
-                 patch.object(recorder.time, "sleep"):
-                self.assertIs(recorder.launch_terminal(title, "Ubuntu-26.04", profile), window)
-                expected = ["wt.exe", "--window", "new", "new-tab", "--title", title,
-                            "--suppressApplicationTitle"]
-                if profile is not None:
-                    expected += ["--profile", profile]
-                popen.assert_called_once_with(expected + guarded)
-                guard.assert_called_once_with("Ubuntu-26.04")
+        with patch.dict(sys.modules, {"pygetwindow": windows}), \
+             patch.object(recorder, "guarded_wsl_command", return_value=guarded) as guard, \
+             patch.object(recorder.subprocess, "Popen") as popen, \
+             patch.object(recorder.time, "sleep"):
+            self.assertIs(recorder.launch_terminal(title, "Ubuntu-26.04"), window)
+        expected = ["wt.exe", "--window", "new", "new-tab", "--title", title,
+                    "--suppressApplicationTitle"] + guarded
+        popen.assert_called_once_with(expected)
+        guard.assert_called_once_with("Ubuntu-26.04")
 
-    def test_invalid_profile_is_rejected_before_preflight_or_session_creation(self):
-        with patch.object(recorder, "grab_screen") as grab:
-            for profile in ("", " ", "Ubuntu\nother", "Ubuntu\0", "Ubuntu;new-tab", 1):
-                with self.subTest(profile=profile), self.assertRaisesRegex(recorder.RecorderError, "프로필"):
-                    recorder.start("test", 1, "Ubuntu-26.04", profile)
-            grab.assert_not_called()
-        self.assertFalse(recorder.STATE_FILE.exists())
-
-    def test_start_passes_and_saves_selected_profile(self):
-        with patch.object(recorder, "grab_screen", return_value=Image.new("RGB", (2, 2))), \
-             patch.object(recorder.shutil, "which", return_value="fixture.exe"), \
-             patch.object(recorder, "launch_terminal", return_value=SimpleNamespace(_hWnd=123)) as launch, \
-             patch("terminal_history.TerminalHistory"), patch("terminal_history.monitor"):
-            recorder.start("test", 1, "Ubuntu-26.04", "My Ubuntu Profile")
-        state = recorder.read_state()
-        launch.assert_called_once_with(state["terminal_title"], "Ubuntu-26.04", "My Ubuntu Profile")
-        self.assertEqual(state["terminal_profile"], "My Ubuntu Profile")
-        self.assertEqual(state["clear_guard"], "bash-rc-v1")
-
-    def test_cli_forwards_explicit_profile_and_distro(self):
-        args = ["linux_recorder.py", "start", "lesson", "--distro", "Ubuntu-26.04",
-                "--profile", "My Ubuntu Profile"]
-        with patch.object(sys, "argv", args), patch.object(recorder, "start") as start:
-            self.assertEqual(recorder.main(), 0)
-        start.assert_called_once_with("lesson", 1.0, "Ubuntu-26.04", "My Ubuntu Profile")
-
-    def test_cli_keeps_default_profile_when_option_is_omitted(self):
+    def test_cli_forwards_distro(self):
         with patch.object(sys, "argv", ["linux_recorder.py", "start", "lesson"]), \
              patch.object(recorder, "start") as start:
             self.assertEqual(recorder.main(), 0)
-        start.assert_called_once_with("lesson", 1.0, None, None)
+        start.assert_called_once_with("lesson", 1.0, None)
 
     def output_sources(self):
         directory = self.root / "private"

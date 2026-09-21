@@ -78,16 +78,9 @@ class RepositoryRulesTests(unittest.TestCase):
 class SmokeOptionsTests(unittest.TestCase):
     def test_smoke_uses_default_wsl_distribution_unless_selected(self):
         self.assertIsNone(manual_smoke.parse_args([]).distro)
-        self.assertIsNone(manual_smoke.parse_args([]).profile)
 
     def test_smoke_accepts_an_explicit_distribution(self):
         self.assertEqual(manual_smoke.parse_args(["--distro", "My-Ubuntu"]).distro, "My-Ubuntu")
-
-    def test_smoke_accepts_a_separate_terminal_profile(self):
-        args = manual_smoke.parse_args(["--distro", "My-Ubuntu", "--profile", "My Ubuntu Profile"])
-        self.assertEqual(args.distro, "My-Ubuntu")
-        self.assertEqual(args.profile, "My Ubuntu Profile")
-
 
 if __name__ == "__main__":
     unittest.main()

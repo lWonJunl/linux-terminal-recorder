@@ -17,7 +17,6 @@ import linux_recorder as recorder
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Run the opt-in Windows/WSL screenshot test.")
     parser.add_argument("--distro", help="WSL distribution name (default: WSL's default distribution)")
-    parser.add_argument("--profile", help="Windows Terminal profile name (default: Terminal's default profile)")
     return parser.parse_args(argv)
 
 
@@ -45,8 +44,6 @@ def main():
         start_command = command + ["start", name, "--interval", "0.5"]
         if args.distro:
             start_command += ["--distro", args.distro]
-        if args.profile is not None:
-            start_command += ["--profile", args.profile]
         process = subprocess.Popen(start_command,
                                    env=env, stdout=log, stderr=log, creationflags=flags)
         try:
@@ -171,7 +168,6 @@ def main():
             pdf = PdfReader(pdf_file)
             assert len(pdf.pages) == 1, "600 lines should fit one long PDF page"
             print(json.dumps({"result": "PASS", "verified_output_rows": 600,
-                              "terminal_profile": final.get("terminal_profile"),
                               "clear_reset_ctrl_l_blocked": True, "desktop_files_added": len(added),
                               "session_directory": str(directory),
                               "panorama_rows": manifest["total_rows"], "screen_tiles": len(manifest["tiles"]),
