@@ -1,9 +1,51 @@
-# Linux Terminal Recorder
+# 🖥️ Linux Terminal Recorder
 
 WSL 실습 화면을 처음부터 끝까지 **파노라마 PNG 한 장과 PDF**로 저장하는 Windows용 Python 프로그램이다.
 실제 터미널을 캡처하므로 명령을 재실행하거나 출력 텍스트를 새로 그리지 않는다.
 
-## 빠른 시작
+> 현재 버전: **v1.3.2**
+
+<br>
+
+## 📂 Overview
+
+| Item | Description |
+| :-- | :-- |
+| **Version** | v1.3.2 |
+| **Platform** | Windows, Windows Terminal, WSL Bash |
+| **Runtime** | Python 3.14.2 검증 |
+| **Output** | 파노라마 PNG 한 장과 PDF |
+| **Permission** | 관리자 권한 불필요 |
+
+<br>
+
+## ✨ Key Features
+
+- 실제 터미널 화면을 자동 스크롤·연결해 실습 흐름을 한 장의 PNG와 PDF로 저장한다.
+- 최종 제출물과 세션·캡처·텍스트 백업을 분리해 보관한다.
+- `clear`, `reset`, `Ctrl+L`로 기록이 사라지는 실수를 방지한다.
+- 캡처 조각이 남아 있으면 결과 생성을 다시 시도할 수 있다.
+- 상태 파일과 경로를 검사하고 기존 결과를 덮어쓰지 않는다.
+
+<br>
+
+## 🗂️ Project Structure
+
+```text
+linux-terminal-recorder/
+├── linux_recorder.py       # CLI, 세션 관리, WSL 실행과 화면 기록
+├── terminal_history.py     # 터미널 스크롤·화면 조각 연결
+├── panorama_export.py      # PNG/PDF 생성과 검증
+├── recording.bashrc        # 기록 중 Bash 보호 설정
+├── tests/                  # 자동 회귀 테스트와 선택 GUI 검증 도구
+├── requirements.txt        # 실행 의존성
+├── requirements-dev.txt    # 테스트·검증 의존성
+└── TEST_REPORT.md          # 검증 결과와 지원 한계
+```
+
+<br>
+
+## 🚀 Quick Start
 
 필요 환경: Windows Python, Windows Terminal, WSL의 Bash.
 실제 검증 환경은 Python 3.14.2 / Ubuntu-26.04다. 관리자 권한은 필요하지 않다.
@@ -42,7 +84,7 @@ python -X utf8 linux_recorder.py stop
 프로그램이 WSL 창을 자동 스크롤하며 캡처한다. 결과 경로가 표시될 때까지 입력하거나 창을 닫지 않는다.
 창을 클릭하라는 안내가 나오면 10초 안에 기록 중인 WSL 창을 클릭한다.
 
-## 저장 위치
+## 📁 Output and Configuration
 
 최종 PDF·PNG는 **바탕화면에 바로**, 중간 기록도 **바탕화면의 별도 폴더 안에** 저장한다.
 
@@ -78,7 +120,7 @@ $env:LINUX_RECORDER_OUTPUT = "D:\submissions"    # 최종 PDF/PNG
 중간 기록 경로는 종료·복구 PowerShell에도 같은 값으로 설정한다.
 최종 저장 위치는 시작 시 세션에 기록되며 이후 환경 변수 변경은 소급 적용되지 않는다.
 
-## 기록 보호와 제한
+## ⚠️ Recording Scope and Limits
 
 - 기록용 Bash에서 `clear`, `clear -x`, `reset`은 차단 안내와 종료 상태 1을 반환한다.
 - `Ctrl+L`은 Emacs·Vi 입력 모드에서 무시하고 입력 중인 명령은 유지한다.
@@ -101,7 +143,7 @@ $env:LINUX_RECORDER_OUTPUT = "D:\submissions"    # 최종 PDF/PNG
 변경 직전 백업은 처음 한 번 보존하고, 이후에는 최신 텍스트만 갱신해 동일 백업의 반복 생성을 막는다.
 백업 사이에 나타났다 사라진 모든 화면을 보존하는 동영상 기록기는 아니다.
 
-## 상태 확인과 복구
+## 🛠️ Commands and Recovery
 
 프로젝트 폴더의 PowerShell에서 실행한다.
 
@@ -127,7 +169,7 @@ python -X utf8 linux_recorder.py recover "Week01-Day02"
 `BitBlt` / `screen grab failed`는 화면 잠금·원격 세션 단절·제한된 실행 환경에서도 발생한다.
 로그인된 Windows의 일반 PowerShell에서 실행한다.
 
-## 개인정보와 보안
+## 🔒 Privacy and Safety
 
 - 자체 업로드 기능은 없다. 사용자가 WSL에서 실행하는 명령의 통신은 별개다.
 - 화면의 비밀번호·토큰·개인정보와 겹친 알림은 이미지·텍스트에 남을 수 있다. 자동 마스킹·암호화는 제공하지 않는다.
@@ -135,7 +177,7 @@ python -X utf8 linux_recorder.py recover "Week01-Day02"
 - 본인이 만든 기록만 복구한다. 경로 검사만으로 로컬 악성 프로그램의 동시 변조나 자료 위조까지 방지하는 것은 아니다.
 - 프로그램·중간 기록·원본 캡처는 제출 전에 구분하고, 제출물의 내용을 직접 확인한다.
 
-## 테스트
+## 🧪 Test
 
 ~~~powershell
 python -X utf8 -m pip install -r requirements-dev.txt
@@ -159,7 +201,7 @@ GUI 테스트는 600줄 출력·한글·색상·긴 줄·화면 지우기 방지
 테스트 PDF·PNG와 중간 기록은 바탕화면에 남는다.
 선택 기능인 `verify_export.py --render`는 `pypdfium2` 설치가 필요하며 미리보기는 `tmp/pdfs`에 만든다.
 
-## 기획과 구현 범위
+## 🎯 Design and Implementation Scope
 
 목표는 **시작 한 번 → 평소처럼 실습 → 종료 한 번**으로 실제 화면이 이어진 제출물을 얻는 것이다.
 
@@ -171,7 +213,7 @@ GUI 테스트는 600줄 출력·한글·색상·긴 줄·화면 지우기 방지
 구현 범위는 일반 셸 실습, 화면 지우기 실수 방지, 원본 보존·재변환, 안전한 상태 파일 처리다.
 터미널의 보관 한도를 넘어서 사라진 출력, 전체 화면 앱의 전 과정, 창 크기 변경에 따른 재배치는 지원 범위에 포함하지 않는다.
 
-## 공개 파일과 개인 기록
+## 📌 Public Files and Personal Records
 
 - 소스 코드, `recording.bashrc`, 의존성 목록, 테스트, README와 검증 보고서를 공개 대상으로 둔다.
 - 개인용 실행 메모 `LOCAL_USAGE.md`, 환경 변수 파일, 캡처·PDF·텍스트 백업·로그·캐시는 `.gitignore`에서 제외한다.
@@ -180,7 +222,17 @@ GUI 테스트는 600줄 출력·한글·색상·긴 줄·화면 지우기 방지
   업로드 전 `git status --short`와 `git diff --cached`로 실제 포함 파일을 확인한다.
 - 라이선스 파일은 아직 지정하지 않았다. 배포 라이선스 선택은 별도로 진행한다.
 
-## 기술 참고
+## 🧰 Tech Stack
+
+| Category | Stack |
+| :-- | :-- |
+| **Language** | Python |
+| **Terminal & Linux** | Windows Terminal, WSL, Bash |
+| **Screen Control** | Windows UI Automation, MSS, Pillow, PyGetWindow |
+| **Export** | Pillow, ReportLab |
+| **Test** | unittest, pypdf, pypdfium2 (선택) |
+
+## 🔗 References
 
 - [Windows Terminal 실행 옵션](https://learn.microsoft.com/en-us/windows/terminal/command-line-arguments)
 - [Windows Terminal UI Automation](https://github.com/microsoft/terminal/blob/main/doc/terminal-a11y-2023.md)
