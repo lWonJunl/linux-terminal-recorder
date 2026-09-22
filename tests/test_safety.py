@@ -155,6 +155,27 @@ class SafetyTests(unittest.TestCase):
         self.assertTrue(state["history_changed"])
         self.assertTrue(any("original" in raw and archive for raw, archive in backups))
 
+    def test_monitor_ignores_temporary_alternate_screen_after_history_returns(self):
+        snapshots = [FakeHistory(rows).snapshot() for rows in
+                     (["original", "prompt"], ["MAN PAGE", "line 2"],
+                      ["original", "prompt man ls", "prompt"])]
+        state = dict(directory=str(self.root), interval=0)
+        backups = []
+
+        def next_snapshot():
+            value = snapshots.pop(0)
+            if not snapshots:
+                (self.root / ".stop-request").touch()
+            return value
+
+        history = FakeHistory([])
+        with patch.object(history, "snapshot", side_effect=next_snapshot):
+            monitor(state, history, lambda value: None,
+                    lambda raw, archive=False: backups.append((raw, archive)))
+        self.assertFalse(state.get("history_changed", False))
+        self.assertFalse(any(archived for _, archived in backups))
+        self.assertIn(("original\r\nprompt man ls\r\nprompt\r\n", False), backups)
+
     def test_unchanged_erased_buffer_is_not_archived_every_poll(self):
         state = dict(directory=str(self.root), interval=0, history_anchor="original")
         history = FakeHistory(["erased", "prompt"])

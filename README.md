@@ -3,7 +3,7 @@
 WSL 실습 화면을 처음부터 끝까지 **파노라마 PNG 한 장과 PDF**로 저장하는 Windows용 Python 프로그램이다.
 실제 터미널을 캡처하므로 명령을 재실행하거나 출력 텍스트를 새로 그리지 않는다.
 
-> 현재 버전: **v1.3.2**
+> 현재 버전: **v1.3.3**
 
 <br>
 
@@ -11,7 +11,8 @@ WSL 실습 화면을 처음부터 끝까지 **파노라마 PNG 한 장과 PDF**�
 
 | Item | Description |
 | :-- | :-- |
-| **Version** | v1.3.2 |
+| **Version** | v1.3.3 (PATCH) |
+| **Versioning** | MAJOR.MINOR.PATCH |
 | **Platform** | Windows, Windows Terminal, WSL Bash |
 | **Runtime** | Python 3.14.2 검증 |
 | **Output** | 파노라마 PNG 한 장과 PDF |
@@ -40,7 +41,8 @@ linux-terminal-recorder/
 ├── tests/                  # 자동 회귀 테스트와 선택 GUI 검증 도구
 ├── requirements.txt        # 실행 의존성
 ├── requirements-dev.txt    # 테스트·검증 의존성
-└── TEST_REPORT.md          # 검증 결과와 지원 한계
+├── TEST_REPORT.md          # 검증 결과와 지원 한계
+└── CHANGELOG.md            # 버전별 변경 기록
 ```
 
 <br>
@@ -127,19 +129,21 @@ $env:LINUX_RECORDER_OUTPUT = "D:\submissions"    # 최종 PDF/PNG
 - 사용자의 `~/.bashrc`를 읽은 뒤 보호 설정을 적용한다. 원래 설정 파일은 수정하지 않는다.
 - `command clear`, `/usr/bin/clear`, 다른 셸·터미널 메뉴 등으로 우회하는 것은 막지 않는다.
 
-시작 안내에는 이 프로젝트 작성자가 직접 제작한 기록 도구라는 설명이 포함돼 있다.
+시작 안내에는 버전, 저장소, 저작권과 기록 보호 기능이 표시된다.
 다른 사람이 사용하는 경우 `recording.bashrc` 끝의 안내 문구를 본인의 사용 상황에 맞게 바꾼다.
 
 현재 지원 범위는 일반 셸에서 출력이 위에서 아래로 누적되는 실습이다.
 
 - 완료 전에 WSL 창을 닫지 않는다. 기록 중 창·글꼴 크기를 유지한다.
 - 캡처 중 다른 창으로 가리거나 화면을 잠그지 않는다.
-- `vim`, `less`, `top` 같은 전체 화면 프로그램의 모든 과정은 보장하지 않는다.
+- `vim`, `less`, `top` 같은 전체 화면 프로그램은 종료 후 원래 스크롤 기록이 돌아오면 기록을 계속한다.
+  전체 화면 안에서만 보인 내용은 최종 PNG/PDF에 포함되지 않으므로 종료한 뒤 `stop`을 실행한다.
 - 스크롤백 한도 초과로 사라진 화면은 복원할 수 없다. 긴 실습 전에는
   [터미널 스크롤 기록 설정](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/profile-advanced)을 확인한다.
 - PDF는 스크린샷 기반이라 텍스트 선택·검색을 지원하지 않는다.
 
-기록 삭제·변경을 감지하면 불완전한 기록을 완성본으로 내보내지 않는다.
+전체 화면 전환처럼 원래 스크롤 기록이 돌아오는 일시적인 변경은 무시한다.
+기록 삭제·버퍼 초과·창 크기 변경처럼 원래 기록이 돌아오지 않으면 불완전한 기록을 완성본으로 내보내지 않는다.
 변경 직전 백업은 처음 한 번 보존하고, 이후에는 최신 텍스트만 갱신해 동일 백업의 반복 생성을 막는다.
 백업 사이에 나타났다 사라진 모든 화면을 보존하는 동영상 기록기는 아니다.
 

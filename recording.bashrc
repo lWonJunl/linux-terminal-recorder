@@ -22,7 +22,7 @@ bind -m emacs-standard '"\C-l": ""'
 bind -m vi-insert '"\C-l": ""'
 bind -m vi-command '"\C-l": ""'
 printf '%s\n' \
-    '==================== Linux Recorder v1.3.2 ====================' \
+    '===================== Linux Recorder v1.3.3 =====================' \
     'GitHub: https://github.com/lWonJunl/linux-terminal-recorder' \
     '© 2026 Choi WonJun. Developed with assistance from OpenAI Codex.' \
     '=================================================================' \

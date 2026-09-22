@@ -114,6 +114,16 @@ class PanoramaTests(unittest.TestCase):
                              history, history.grab, recorder.write_json)
         self.assertFalse((self.root / "captures").exists())
 
+    def test_archived_history_allows_recovery_after_temporary_alternate_screen(self):
+        (self.root / "history-before-change-test.txt").write_text(
+            "original\r\nprompt\r\n", encoding="utf-8", newline="")
+        history = FakeHistory(["original", "prompt man ls", "prompt"])
+        state = {"directory": str(self.root), "history_changed": True,
+                 "history_anchor": "original"}
+        capture_panorama(state, history, history.grab, recorder.write_json)
+        self.assertFalse(state["history_changed"])
+        self.assertTrue(state["transient_history_change_ignored"])
+
     def test_snapshot_can_grow_but_not_lose_completed_rows(self):
         self.assertTrue(history_extends(["pwd  ", "prompt"], ["pwd", "prompt ls", "result"]))
         self.assertFalse(history_extends(["first", "second", "prompt"], ["second", "prompt"]))

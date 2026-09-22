@@ -160,29 +160,32 @@ class TerminalHistory:
 
 def monitor(state: dict, history, save_state, save_backup) -> None:
     directory = Path(state["directory"])
-    previous = None
+    intact = None
+    divergent = None
     try:
-        while not (directory / ".stop-request").exists():
+        while True:
             current = history.snapshot()
             anchor = state.get("history_anchor")
-            changed = previous is not None and not history_extends(previous.rows, current.rows)
-            if anchor and not current.rows[0].startswith(anchor):
-                changed = True
             if not anchor and current.rows[0].strip():
                 state["history_anchor"] = current.rows[0].rstrip()
-            if changed and not state.get("history_changed"):
-                # Includes erased scrollback, buffer overflow, reflow, and TUI rewrites.
-                # Preserve the last intact buffer once. A missing anchor remains
-                # missing on every poll; do not archive the same damaged buffer.
-                state["history_changed"] = True
-                if previous is not None:
-                    save_backup(previous.raw, archive=True)
-            if previous is None or current.digest != previous.digest:
+                anchor = state["history_anchor"]
+            restored = (not anchor or current.rows[0].startswith(anchor)) and (
+                intact is None or history_extends(intact.rows, current.rows))
+            if restored:
+                divergent = None
+                intact = current
+            else:
+                # Alternate-screen programs temporarily replace the UIA document.
+                # Keep the last normal buffer and wait for it to return. A change
+                # still present at stop is treated as real loss/reflow.
+                divergent = current
+            if restored and state.get("history_digest") != current.digest:
                 save_backup(current.raw)
                 state.update(status="recording", history_rows=len(current.rows),
                              history_digest=current.digest, last_history_at=time.time())
                 save_state(state)
-            previous = current
+            if (directory / ".stop-request").exists():
+                break
             deadline = time.monotonic() + state["interval"]
             while time.monotonic() < deadline and not (directory / ".stop-request").exists():
                 time.sleep(min(0.05, max(0, deadline - time.monotonic())))
@@ -193,18 +196,41 @@ def monitor(state: dict, history, save_state, save_backup) -> None:
         state.update(status="history-error", error=str(error))
         raise
     finally:
+        if divergent is not None and not state.get("history_changed"):
+            state["history_changed"] = True
+            if intact is not None:
+                save_backup(intact.raw, archive=True)
+            save_backup(divergent.raw)
+            state.update(history_rows=len(divergent.rows), history_digest=divergent.digest,
+                         last_history_at=time.time())
         save_state(state)
+
+
+def restored_from_archived_history(state: dict, current: Snapshot) -> bool:
+    directory = Path(state["directory"])
+    for backup in directory.glob("history-before-change-*.txt"):
+        try:
+            with backup.open(encoding="utf-8", newline="") as stream:
+                archived = rows_from_text(stream.read())
+        except (OSError, UnicodeError):
+            continue
+        if archived and history_extends(archived, current.rows):
+            return True
+    return False
 
 
 def capture_panorama(state: dict, history, grab, save_json) -> dict:
     """Capture disjoint rows by their actual UIA coordinates, even identical rows."""
-    if state.get("history_changed"):
-        raise HistoryError("기록 중 스크롤 내용 변경이 감지됐습니다(clear/버퍼 초과/창 크기 변경/전체화면 앱 등). "
-                           "전체 기록으로 잘못 저장하지 않도록 중단했습니다. history.txt 백업을 확인하세요.")
     history.focus()
     baseline = history.snapshot()
     if state.get("history_anchor") and not baseline.rows[0].startswith(state["history_anchor"]):
         raise HistoryError("실습의 맨 처음 기록이 더 이상 스크롤 버퍼에 없습니다. history.txt 백업을 확인하세요.")
+    if state.get("history_changed"):
+        if not restored_from_archived_history(state, baseline):
+            raise HistoryError("기록 중 스크롤 내용 변경이 감지됐습니다(clear/버퍼 초과/창 크기 변경 등). "
+                               "전체 기록으로 잘못 저장하지 않도록 중단했습니다. history.txt 백업을 확인하세요.")
+        state["history_changed"] = False
+        state["transient_history_change_ignored"] = True
     if state.get("history_digest") and baseline.digest != state["history_digest"]:
         backup = Path(state["directory"]) / "history.txt"
         if backup.exists():
