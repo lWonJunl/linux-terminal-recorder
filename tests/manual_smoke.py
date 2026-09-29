@@ -141,6 +141,19 @@ def main():
             assert state["clear_guard"] == "bash-rc-v1"
             assert "X" * 240 in "".join(row for row in rows if row and set(row) == {"X"})
             assert not state.get("history_changed"), state
+            type_command("set +o vi")
+            type_command("(sleep 12; printf 'BACKGROUND-DONE\\n') &")
+            blocked = subprocess.run(command + ["stop"], env=env, creationflags=flags,
+                                     capture_output=True, text=True, encoding="utf-8", timeout=15)
+            assert blocked.returncode != 0 and "실행 중인 작업" in blocked.stderr, blocked
+            assert not (directory / ".stop-request").exists()
+            deadline = time.monotonic() + 20
+            while not any(row.rstrip().endswith("$ BACKGROUND-DONE")
+                          for row in history.snapshot().rows):
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Background job did not finish: " + str(directory))
+                time.sleep(0.1)
+            time.sleep(0.5)
             result = subprocess.run(command + ["stop"], env=env, creationflags=flags,
                                     capture_output=True, text=True, encoding="utf-8", timeout=150)
             print(result.stdout, end="")

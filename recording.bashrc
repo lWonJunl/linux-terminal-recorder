@@ -3,6 +3,12 @@ if [[ -f "$HOME/.bashrc" ]]; then
     source "$HOME/.bashrc"
 fi
 
+# Identify this terminal session so stop can wait for its running commands.
+if [[ -n ${LINUX_RECORDER_SESSION_FILE:-} ]]; then
+    ps -o pid=,sid= -p "$$" > "$LINUX_RECORDER_SESSION_FILE"
+    printf '%s\n' "${WSL_DISTRO_NAME:-}" >> "$LINUX_RECORDER_SESSION_FILE"
+fi
+
 # Remove common aliases before defining the session's protected commands.
 unalias clear reset 2>/dev/null || :
 clear() {
@@ -22,7 +28,7 @@ bind -m emacs-standard '"\C-l": ""'
 bind -m vi-insert '"\C-l": ""'
 bind -m vi-command '"\C-l": ""'
 printf '%s\n' \
-    '===================== Linux Recorder v1.3.3 =====================' \
+    '===================== Linux Recorder v1.4.0 =====================' \
     'GitHub: https://github.com/lWonJunl/linux-terminal-recorder' \
     '© 2026 Choi WonJun. Developed with assistance from OpenAI Codex.' \
     '=================================================================' \

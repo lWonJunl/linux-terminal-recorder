@@ -121,6 +121,57 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual(len(pdf.pages[0].images), 1)
         self.assertEqual(pdf.pages[0].images[0].image.size, (30, 40))
 
+    def test_stop_rejects_terminal_session_jobs_without_stopping_recording(self):
+        directory, state = self.session()
+        state.update(process_guard=True, terminal_hwnd=1, distro="Ubuntu-26.04")
+        recorder.write_json(directory / "session.json", state)
+        (directory / ".shell-session").write_text("100 100\n", encoding="ascii")
+        active = subprocess.CompletedProcess([], 0,
+            "100 100 Ss bash\n101 100 S sleep\n102 100 Z finished\n", "")
+        idle = subprocess.CompletedProcess([], 0, "100 100 Ss bash\n", "")
+        self.frame(state)
+        with patch.object(recorder.subprocess, "run", side_effect=[active, idle]) as run:
+            with self.assertRaisesRegex(recorder.RecorderError, "sleep"):
+                recorder.stop()
+            self.assertFalse((directory / ".stop-request").exists())
+            self.assertTrue(recorder.STATE_FILE.exists())
+            recorder.stop()
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_args.args[0][:3],
+                         ["wsl.exe", "--distribution", "Ubuntu-26.04"])
+        self.assertFalse(recorder.STATE_FILE.exists())
+
+    def test_finished_capture_checks_jobs_again_after_recording_stops(self):
+        directory, state = self.session()
+        state.update(mode="panorama-v1", process_guard=True, terminal_hwnd=1,
+                     terminal_title="Linux Recorder test")
+        recorder.write_json(directory / "session.json", state)
+        with patch.object(recorder, "ensure_terminal_idle", side_effect=recorder.RecorderError(
+                "running background job")) as guard:
+            with self.assertRaisesRegex(recorder.RecorderError, "running background job"):
+                recorder.recover("test")
+        guard.assert_called_once()
+        self.assertTrue(recorder.STATE_FILE.exists())
+        self.assertFalse((directory / "captures" / "manifest.json").exists())
+
+    def test_shell_session_file_identifies_original_default_distro(self):
+        directory, state = self.session()
+        (directory / ".shell-session").write_text("100 100\nUbuntu-26.04\n", encoding="utf-8")
+        listing = subprocess.CompletedProcess([], 0, "100 100 Ss bash\n", "")
+        with patch.object(recorder.subprocess, "run", return_value=listing) as run:
+            self.assertEqual(recorder.running_terminal_processes(directory, state), [])
+        self.assertEqual(run.call_args.args[0][:3],
+                         ["wsl.exe", "--distribution", "Ubuntu-26.04"])
+
+    def test_stop_keeps_session_when_process_status_is_unavailable(self):
+        directory, state = self.session()
+        state.update(process_guard=True, terminal_hwnd=1)
+        recorder.write_json(directory / "session.json", state)
+        with self.assertRaisesRegex(recorder.RecorderError, "셸 세션"):
+            recorder.stop()
+        self.assertFalse((directory / ".stop-request").exists())
+        self.assertTrue(recorder.STATE_FILE.exists())
+
     def test_empty_failed_session_can_be_cleared_without_losing_metadata(self):
         directory, state = self.session()
         state.update(status="capture-error", error="fixture failure")
@@ -226,6 +277,17 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0][:3], ["wsl.exe", "--distribution", "Ubuntu-26.04"])
         self.assertEqual(run.call_args.args[0][-1], str(recorder.SCRIPT.with_name("recording.bashrc")))
 
+    def test_guarded_wsl_launch_passes_session_file_to_bash(self):
+        directory = self.root / "session with spaces"
+        converted = ["/mnt/c/project/recording.bashrc\n", "/mnt/c/project/session with spaces/.shell-session\n"]
+        responses = [subprocess.CompletedProcess([], 0, path, "") for path in converted]
+        with patch.object(recorder.subprocess, "run", side_effect=responses) as run:
+            command = recorder.guarded_wsl_command("Ubuntu-26.04", directory / ".shell-session")
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(command, ["wsl.exe", "--distribution", "Ubuntu-26.04", "--cd", "~",
+                                   "--exec", "env", "LINUX_RECORDER_SESSION_FILE=" + converted[1].strip(),
+                                   "bash", "--rcfile", converted[0].strip(), "-i"])
+
     def test_failed_wsl_path_conversion_does_not_launch_unguarded_shell(self):
         with patch.object(recorder.subprocess, "run", return_value=subprocess.CompletedProcess(
                 [], 1, "", "fixture failure")):
@@ -246,7 +308,7 @@ class RecorderTests(unittest.TestCase):
         expected = ["wt.exe", "--window", "new", "new-tab", "--title", title,
                     "--suppressApplicationTitle"] + guarded
         popen.assert_called_once_with(expected)
-        guard.assert_called_once_with("Ubuntu-26.04")
+        guard.assert_called_once_with("Ubuntu-26.04", None)
 
     def test_cli_forwards_distro(self):
         with patch.object(sys, "argv", ["linux_recorder.py", "start", "lesson"]), \

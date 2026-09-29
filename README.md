@@ -3,7 +3,7 @@
 WSL 실습 화면을 처음부터 끝까지 **파노라마 PNG 한 장과 PDF**로 저장하는 Windows용 Python 프로그램이다.
 실제 터미널을 캡처하므로 명령을 재실행하거나 출력 텍스트를 새로 그리지 않는다.
 
-> 현재 버전: **v1.3.3**
+> 현재 버전: **v1.4.0**
 
 <br>
 
@@ -11,7 +11,7 @@ WSL 실습 화면을 처음부터 끝까지 **파노라마 PNG 한 장과 PDF**�
 
 | Item | Description |
 | :-- | :-- |
-| **Version** | v1.3.3 (PATCH) |
+| **Version** | v1.4.0 (MINOR) |
 | **Versioning** | MAJOR.MINOR.PATCH |
 | **Platform** | Windows, Windows Terminal, WSL Bash |
 | **Runtime** | Python 3.14.2 검증 |
@@ -78,6 +78,10 @@ python -X utf8 linux_recorder.py start "Week01-Day02" --distro Ubuntu-26.04
 ### 3. 종료 및 저장
 
 명령 실행이 끝나 프롬프트로 돌아오면 **다른 PowerShell 창에서도 같은 프로젝트 폴더를 열고** 실행한다.
+녹화 중인 WSL 터미널과 같은 Linux 세션에 후면 작업이나 서브 셸 등 실행 중인 프로세스가 남아 있으면 `stop`은 저장을 시작하지 않고 작업을 안내한다.
+작업이 끝난 뒤 같은 `stop` 명령을 다시 실행한다. 오래 실행되는 작업은 사용자만 직접 종료할 수 있다.
+이 보호는 수정된 버전으로 새로 시작한 기록에 적용된다.
+`setsid` 등으로 별도 Linux 세션을 만든 프로그램의 출력은 이 확인으로 추적하지 않는다. 캡처 중에는 새 명령을 실행하지 않는다.
 
 ~~~powershell
 python -X utf8 linux_recorder.py stop
@@ -100,6 +104,7 @@ python -X utf8 linux_recorder.py stop
     ├── .recorder.lock
     └── Week01-Day02/
         ├── session.json          # 상태와 최종 결과 경로
+        ├── .shell-session       # 실행 중인 WSL 셸 세션 식별 정보
         ├── history.txt           # 최신 텍스트 백업
         └── captures/
             └── panorama-고유번호/
@@ -161,6 +166,7 @@ python -X utf8 linux_recorder.py recover "Week01-Day02"
 - `doctor`: 중간·최종 저장 경로와 화면 접근 검사. 이미지는 저장하지 않는다.
 - `recover`: 과제 표시명이 아니라 **실제 세션 폴더 이름**으로 결과 생성 재시도.
 - `start ... --interval 1`: 텍스트 백업 간격(초). 촬영 간격이 아니다.
+- `stop`: 해당 WSL 터미널 세션의 실행 중인 작업이 끝나야 캡처를 시작한다. 작업이 남아 있으면 기록을 유지한 채 종료를 거부한다.
 
 캡처 실패 시 WSL 창을 유지하고 원인을 해소한 뒤 `stop`을 다시 실행한다.
 완전한 캡처 조각이 이미 있으면 창 없이도 복구할 수 있다.

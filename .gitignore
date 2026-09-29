@@ -23,6 +23,7 @@ history.txt
 history-before-change-*.txt
 .active-session.json
 .stop-request
+.shell-session
 .control.lock
 .recorder.lock
 *.png

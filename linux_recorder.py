@@ -171,6 +171,11 @@ def read_session(directory: Path) -> dict:
             absolute_path(state["output_directory"], "output_directory")
         if "history_changed" in state and type(state["history_changed"]) is not bool:
             raise ValueError("history_changed 항목은 참/거짓 값이어야 합니다.")
+        if "process_guard" in state and type(state["process_guard"]) is not bool:
+            raise ValueError("process_guard 항목은 참/거짓 값이어야 합니다.")
+        if "distro" in state and state["distro"] is not None and (
+                not isinstance(state["distro"], str) or not state["distro"].strip()):
+            raise ValueError("distro 항목은 배포판 이름 또는 null이어야 합니다.")
         for key in ("history_anchor", "history_digest"):
             if key in state and not isinstance(state[key], str):
                 raise ValueError(f"{key} 항목은 문자열이어야 합니다.")
@@ -245,7 +250,7 @@ def grab_screen(box: tuple[int, int, int, int] | None = None) -> Image.Image:
     )
 
 
-def guarded_wsl_command(distro: str | None = None) -> list[str]:
+def guarded_wsl_command(distro: str | None = None, session_file: Path | None = None) -> list[str]:
     """Use a session-only Bash rcfile; never modify the user's shell settings."""
     command = ["wsl.exe"]
     if distro:
@@ -261,14 +266,25 @@ def guarded_wsl_command(distro: str | None = None) -> list[str]:
     path = result.stdout.strip()
     if result.returncode or not path.startswith("/") or "\n" in path:
         raise RecorderError("WSL 기록 보호 경로를 확인하지 못했습니다: " + result.stderr.strip())
-    return command + ["--cd", "~", "--exec", "bash", "--rcfile", path, "-i"]
+    launch = command + ["--cd", "~", "--exec"]
+    if session_file is not None:
+        session_path = subprocess.run(
+            command + ["--exec", "wslpath", "-u", str(session_file)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        converted = session_path.stdout.strip()
+        if session_path.returncode or not converted.startswith("/") or "\n" in converted:
+            raise RecorderError("WSL 세션 확인 경로를 만들지 못했습니다: " + session_path.stderr.strip())
+        launch += ["env", "LINUX_RECORDER_SESSION_FILE=" + converted]
+    return launch + ["bash", "--rcfile", path, "-i"]
 
 
-def launch_terminal(title: str, distro: str | None = None):
+def launch_terminal(title: str, distro: str | None = None, session_file: Path | None = None):
     import pygetwindow as windows
 
     command = ["wt.exe", "--window", "new", "new-tab", "--title", title,
-               "--suppressApplicationTitle"] + guarded_wsl_command(distro)
+               "--suppressApplicationTitle"] + guarded_wsl_command(distro, session_file)
     # This is the visible, interactive terminal requested by the user.
     process = subprocess.Popen(command)
     deadline = time.monotonic() + 20
@@ -369,14 +385,15 @@ def start(name: str, interval: float, distro: str | None = None) -> None:
             state = dict(name=name, directory=str(directory), captures=str(captures), mode="panorama-v1",
                          started_at=now(), interval=interval, status="starting", capture_count=0,
                          pid=os.getpid(), terminal_title="Linux Recorder " + uuid.uuid4().hex[:12],
-                         output_directory=str(OUTPUT_ROOT), clear_guard="bash-rc-v1")
+                         output_directory=str(OUTPUT_ROOT), clear_guard="bash-rc-v1",
+                         process_guard=True, distro=distro)
             write_json(directory / "session.json", state)
             write_json(STATE_FILE, {"directory": str(directory)})
         except BaseException:
             recorder_lock.__exit__()
             raise
     try:
-        window = launch_terminal(state["terminal_title"], distro)
+        window = launch_terminal(state["terminal_title"], distro, directory / ".shell-session")
         state["terminal_hwnd"] = window._hWnd
         write_json(directory / "session.json", state)
         from terminal_history import TerminalHistory, monitor
@@ -490,6 +507,9 @@ def finish(directory: Path, state: dict) -> bool:
         write_json(directory / "session.json", state)
         print(f"캡처가 없어 PDF를 만들지 않았습니다. 오류 기록: {directory}")
         return False
+    if is_panorama and not state.get("panorama_manifest") and "terminal_hwnd" in state \
+            and state.get("process_guard"):
+        ensure_terminal_idle(directory, state)
     try:
         if is_panorama and not state.get("panorama_manifest"):
             if "terminal_hwnd" not in state:
@@ -519,6 +539,57 @@ def finish(directory: Path, state: dict) -> bool:
     return True
 
 
+def running_terminal_processes(directory: Path, state: dict) -> list[str]:
+    """Find live processes in the recorded Bash terminal's Linux session."""
+    source = confined_path(directory / ".shell-session", directory, "WSL 셸 세션", direct_child=True)
+    try:
+        lines = source.read_text(encoding="utf-8").splitlines()
+        shell_pid, session_id = (int(part) for part in lines[0].split())
+        if shell_pid <= 0 or session_id <= 0:
+            raise ValueError("invalid process identifiers")
+    except (OSError, UnicodeError, ValueError, IndexError) as error:
+        raise RecorderError("WSL 셸 세션을 확인하지 못했습니다. 창이 준비된 뒤 stop을 다시 실행하세요.") from error
+    command = ["wsl.exe"]
+    distro = (lines[1].strip() if len(lines) > 1 else "") or state.get("distro")
+    if distro:
+        command += ["--distribution", distro]
+    try:
+        result = subprocess.run(command + ["--exec", "ps", "-eo", "pid=,sid=,stat=,comm="],
+                                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                timeout=30, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RecorderError("WSL 작업 상태를 조회하지 못했습니다. stop을 다시 실행하세요.") from error
+    if result.returncode:
+        raise RecorderError("WSL 작업 상태를 조회하지 못했습니다: " + result.stderr.strip())
+    active = []
+    shell_found = False
+    for line in result.stdout.splitlines():
+        parts = line.split(maxsplit=3)
+        if len(parts) != 4:
+            continue
+        try:
+            pid, sid = int(parts[0]), int(parts[1])
+        except ValueError:
+            continue
+        if pid == shell_pid and sid == session_id:
+            shell_found = True
+        elif sid == session_id and not parts[2].startswith("Z"):
+            active.append(f"{pid} {parts[3]}")
+    if not shell_found:
+        raise RecorderError("녹화 중인 WSL 셸이 종료됐습니다. 창과 세션 상태를 확인하세요.")
+    return active
+
+
+def ensure_terminal_idle(directory: Path, state: dict) -> None:
+    active = running_terminal_processes(directory, state)
+    if active:
+        preview = ", ".join(active[:5])
+        if len(active) > 5:
+            preview += f" 외 {len(active) - 5}개"
+        raise RecorderError("WSL 터미널에서 실행 중인 작업이 있어 저장을 기다립니다: "
+                            + preview + "\n작업이 끝난 뒤 stop 또는 recover를 다시 실행하세요.")
+
+
 def stop(timeout: float = 30) -> None:
     if not ROOT.exists():
         raise RecorderError("진행 중인 기록이 없습니다.")
@@ -527,6 +598,9 @@ def stop(timeout: float = 30) -> None:
         if state is None:
             raise RecorderError("진행 중인 기록이 없습니다.")
         directory = Path(state["directory"])
+        if state.get("process_guard") and state["status"] in ("starting", "recording", "paused") \
+                and "terminal_hwnd" in state and not state.get("panorama_manifest"):
+            ensure_terminal_idle(directory, state)
         write_json(directory / ".stop-request", {"requested_at": now()})
         # Export only after the writer has released its OS lock.
         with FileLock(ROOT / ".recorder.lock", timeout=timeout):
