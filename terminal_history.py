@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import json
 import math
 import os
 from pathlib import Path
@@ -34,10 +35,27 @@ def rows_from_text(text: str) -> list[str]:
     return rows
 
 
+def fixed_rows(before: list[str]) -> list[str]:
+    fixed = [row.rstrip() for row in before[:-1]]
+    # Trailing blank rows may be redrawn along with the mutable last line.
+    while fixed and not fixed[-1]:
+        fixed.pop()
+    return fixed
+
+
 def history_extends(before: list[str], after: list[str]) -> bool:
     # The final line is still being typed; completed rows must remain intact.
-    fixed = [row.rstrip() for row in before[:-1]]
+    fixed = fixed_rows(before)
     return len(after) >= len(fixed) and fixed == [row.rstrip() for row in after[:len(fixed)]]
+
+
+def matches_fixed_prefix(state: dict, rows: list[str]) -> bool:
+    count = state.get("fixed_history_rows", 0)
+    if not count:
+        return True
+    prefix = [row.rstrip() for row in rows[:count]]
+    digest = hashlib.sha256(json.dumps(prefix, ensure_ascii=False).encode("utf-8")).hexdigest()
+    return len(prefix) == count and digest == state.get("fixed_history_digest")
 
 
 class TerminalHistory:
@@ -169,11 +187,16 @@ def monitor(state: dict, history, save_state, save_backup) -> None:
             if not anchor and current.rows[0].strip():
                 state["history_anchor"] = current.rows[0].rstrip()
                 anchor = state["history_anchor"]
-            restored = (not anchor or current.rows[0].startswith(anchor)) and (
+            restored = matches_fixed_prefix(state, current.rows) and (not anchor or current.rows[0].startswith(anchor)) and (
                 intact is None or history_extends(intact.rows, current.rows))
             if restored:
                 divergent = None
                 intact = current
+                fixed = fixed_rows(current.rows)
+                if len(fixed) > state.get("fixed_history_rows", 0):
+                    state["fixed_history_rows"] = len(fixed)
+                    state["fixed_history_digest"] = hashlib.sha256(
+                        json.dumps(fixed, ensure_ascii=False).encode("utf-8")).hexdigest()
             else:
                 # Alternate-screen programs temporarily replace the UIA document.
                 # Keep the last normal buffer and wait for it to return. A change
@@ -223,6 +246,8 @@ def capture_panorama(state: dict, history, grab, save_json) -> dict:
     """Capture disjoint rows by their actual UIA coordinates, even identical rows."""
     history.focus()
     baseline = history.snapshot()
+    if not matches_fixed_prefix(state, baseline.rows):
+        raise HistoryError("이전에 확인한 스크롤 기록이 변경됐습니다. history.txt 백업을 확인하세요.")
     if state.get("history_anchor") and not baseline.rows[0].startswith(state["history_anchor"]):
         raise HistoryError("실습의 맨 처음 기록이 더 이상 스크롤 버퍼에 없습니다. history.txt 백업을 확인하세요.")
     if state.get("history_changed"):

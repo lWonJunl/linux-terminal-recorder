@@ -11,7 +11,7 @@ from pypdf import PdfReader
 
 import linux_recorder as recorder
 from panorama_export import validate_tiles, write_long_png, write_pdf
-from terminal_history import HistoryError, Snapshot, capture_panorama, history_extends
+from terminal_history import HistoryError, Snapshot, capture_panorama, history_extends, monitor
 
 
 class FakeRange:
@@ -127,6 +127,72 @@ class PanoramaTests(unittest.TestCase):
     def test_snapshot_can_grow_but_not_lose_completed_rows(self):
         self.assertTrue(history_extends(["pwd  ", "prompt"], ["pwd", "prompt ls", "result"]))
         self.assertFalse(history_extends(["first", "second", "prompt"], ["second", "prompt"]))
+
+    def test_archive_accepts_apt_progress_redraw(self):
+        archived = ["recorder banner", "", "Setting up tree ...", "  ", "Progress: [ 80%] [████  ]"]
+        current = ["recorder banner", "", "Setting up tree ...", "$ tree --version", "tree v2.3.1"]
+        (self.root / "history-before-change-test.txt").write_bytes("\r\n".join(archived).encode("utf-8"))
+        history = FakeHistory(current)
+        state = {"directory": str(self.root), "history_changed": True, "history_anchor": archived[0]}
+
+        manifest = capture_panorama(state, history, history.grab, recorder.write_json)
+
+        self.assertEqual(manifest["total_rows"], len(current))
+        self.assertFalse(state["history_changed"])
+        self.assertFalse(history_extends(archived, current[:2] + current[3:]))
+        self.assertFalse(history_extends(archived, current[:1] + current[2:]))
+        self.assertFalse(history_extends(archived[:-1] + ["ordinary output", "prompt"], current))
+
+    def test_apt_progress_variants_preserve_completed_rows(self):
+        current = ["banner", "installed", "$ command"]
+        for progress in ("Progress: [ 80%] [████▌ ]", "Progress: [ 80%] [####..]",
+                         "Progression : [ 80%] [████▏ ]"):
+            with self.subTest(progress=progress):
+                before = ["banner", "installed", "", progress]
+                self.assertTrue(history_extends(before, current))
+                self.assertFalse(history_extends(before, ["banner", "$ command"]))
+
+    def test_monitor_keeps_completed_line_after_progress_disappears(self):
+        progress = ["banner", "installed", "", "Progress: [ 80%] [████▌ ]"]
+        settled = ["banner", "installed"]
+        erased = ["banner", "$ command", "prompt"]
+        snapshots = iter([progress, settled, erased])
+        state = {"directory": str(self.root), "interval": 0}
+        backups = []
+
+        class SequenceHistory:
+            def snapshot(inner_self):
+                rows = next(snapshots)
+                if rows == erased:
+                    (self.root / ".stop-request").touch()
+                return Snapshot("\r\n".join(rows), rows)
+
+        monitor(state, SequenceHistory(), lambda value: None,
+                lambda raw, archive=False: backups.append((raw, archive)))
+        self.assertTrue(state["history_changed"])
+        self.assertIn(("\r\n".join(settled), True), backups)
+        with self.assertRaises(HistoryError):
+            capture_panorama(state, FakeHistory(erased), FakeHistory(erased).grab, recorder.write_json)
+
+    def test_monitor_accepts_progress_drawn_after_blank_line(self):
+        partial = ["banner", "installed", "", "Progress: [ 8"]
+        progress = ["banner", "installed", "", "Progress: [ 80%] [####..]"]
+        completed = ["banner", "installed", "$ tree --version", "tree v2.3.1"]
+        snapshots = iter([partial, progress, completed])
+        state = {"directory": str(self.root), "interval": 0}
+
+        class SequenceHistory:
+            def snapshot(inner_self):
+                rows = next(snapshots)
+                if rows == completed:
+                    (self.root / ".stop-request").touch()
+                return Snapshot("\r\n".join(rows), rows)
+
+        monitor(state, SequenceHistory(), lambda value: None, lambda raw, archive=False: None)
+        self.assertFalse(state.get("history_changed", False))
+        self.assertEqual(state["fixed_history_rows"], 3)
+        self.assertFalse(history_extends(["banner", "installed", "", "next", "prompt"],
+                                         ["banner", "installed", "next", "prompt"]))
 
     def test_start_anchor_detects_a_single_fast_overflow(self):
         history = FakeHistory(["ROW-1000", "ROW-1001", "prompt"])
